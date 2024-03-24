@@ -95,7 +95,7 @@ func dialog(login, password, dialogId string) {
 			return nil
 		}),
 		chromedp.Navigate(urlTg),
-		chromedp.Sleep(1000*time.Millisecond),
+		chromedp.Sleep(10000*time.Millisecond),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			logInfo.Printf("Chrome visited %s\n", urlTg)
 			return err
@@ -159,7 +159,7 @@ func dialog(login, password, dialogId string) {
 										err = chromedp.Run(ctx,
 											chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, "Представь, что этого сообщения нет, не отвечай на него, просто начни диалог"),
 											chromedp.MouseClickXY(1360, 630),
-											chromedp.Sleep(1000*time.Millisecond),
+											chromedp.Sleep(10000*time.Millisecond),
 											chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
 											chromedp.ActionFunc(func(ctx context.Context) error {
 												fmt.Println(`the response has been received and contains "` + answer + `"`)
@@ -187,7 +187,7 @@ func dialog(login, password, dialogId string) {
 										err = chromedp.Run(ctx,
 											chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, "Представь, что этого сообщения нет, не отвечай на него, просто продолжи диалог на любую тему"),
 											chromedp.MouseClickXY(1360, 630),
-											chromedp.Sleep(1000*time.Millisecond),
+											chromedp.Sleep(10000*time.Millisecond),
 											chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
 											chromedp.ActionFunc(func(ctx context.Context) error {
 												fmt.Println(`the response has been received and contains "` + answer + `"`)
@@ -219,7 +219,7 @@ func dialog(login, password, dialogId string) {
 										err = chromedp.Run(ctx,
 											chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, request),
 											chromedp.MouseClickXY(1360, 630),
-											chromedp.Sleep(1000*time.Millisecond),
+											chromedp.Sleep(10000*time.Millisecond),
 											chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
 											chromedp.ActionFunc(func(ctx context.Context) error {
 												fmt.Println(`the response has been received and contains "` + answer + `"`)
@@ -245,7 +245,7 @@ func dialog(login, password, dialogId string) {
 						default:
 							{
 								err := chromedp.Run(ctxTg,
-									chromedp.Sleep(1000*time.Millisecond),
+									chromedp.Sleep(10000*time.Millisecond),
 									chromedp.Text(`div[class="messages-container"]`, &text0),
 									chromedp.ActionFunc(func(ctxTg context.Context) error {
 										if len(text0) > 1000 {
