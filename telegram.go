@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	// "sync"
+	"io"
 	"time"
 
 	// "github.com/chromedp/cdproto/dom"
@@ -261,14 +261,18 @@ func dialog(login, password, dialogId string) {
 								if err != nil {
 									logErr.Panicln("Error while performing the automation logic:", err)
 								}
-								if text0 != text1 {
+								if text0 == text1 {
+									lastDialog.Seek(0, io.SeekStart)
+									lastDialog.Truncate(0)
+									lastDialog.WriteString(text0)
+									text1 = text0
+								} else {
+									lastDialog.Seek(0, io.SeekStart)
+									lastDialog.Truncate(0)
 									lastDialog.WriteString(text0)
 									fmt.Println("A new message has been received from telegram")
 									logInfo.Println("A new message has been received from telegram")
 									break
-								} else {
-									lastDialog.WriteString(text0)
-									text1 = text0
 								}
 							}
 						}
@@ -288,7 +292,7 @@ func dialog(login, password, dialogId string) {
 						continue
 					}
 					break
-				} else if str[i-18:i-2] == "Владислав" {
+				} else if str[i-20:i-1] == "Владислав" {
 					str = str[i:]
 					logInfo.Println(`New message contain "` + str + `"`)
 					if len(str) == 0 {
@@ -329,7 +333,7 @@ func main() {
 	logInfo := log.New(file, "APP_INFO\t", log.Ldate|log.Ltime)
 	defer logInfo.Println("app exit")
 	var dialogId string
-	fmt.Println("Change dialog Mis_Kitsune - \"1238372228\"   Inal - \"833591886\" Blodos_Dodos_Bot - \"5650924958\" Арт - \"6133569386\" Юра - \"871044396\"\nПроектик - \"-4081628480\" Ермолов - \"1498293686\" Саша ДВ -\"1891226386\"")
+	fmt.Println("Change dialog Mis_Kitsune - \"1238372228\"   Inal - \"833591886\" Blodos_Dodos_Bot - \"5650924958\" Арт - \"6133569386\" Юра - \"871044396\"\nПроектик - \"-4081628480\" Ермолов - \"1498293686\" Саша ДВ(^^) -\"1891226386\" Настя ДВ(milk_catt) - 1180819964")
 	fmt.Scan(&dialogId)
 
 	dialog("bot408916@gmail.com", "1818ASIUbf23", dialogId)
