@@ -243,7 +243,7 @@ func main() {
 	logInfo := log.New(file, "APP_INFO\t", log.Ldate|log.Ltime)
 	defer logInfo.Println("app exit")
 	var dialogId string
-	fmt.Println(`Change dialog Mis_Kitsune - "1238372228"   Inal - "833591886" Blodos_Dodos_Bot - "5650924958" Арт - "6133569386" Юра - "871044396" Проектик - "-4081628480"`)
+	fmt.Println(`Change dialog Mis_Kitsune - "1238372228"   Inal - "833591886" Blodos_Dodos_Bot - "5650924958" Арт - "6133569386" Юра - "871044396" Проектик - "-4081628480" Ермолов - "1498293686" Саша ДВ -"1891226386"`)
 	fmt.Scan(&dialogId)
 
 	dialog("bot408916@gmail.com", "1818ASIUbf23", dialogId)
