@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+
 	// "sync"
 	"time"
 
@@ -13,13 +14,13 @@ import (
 )
 
 func dialog(login, password, dialogId string) {
+	var buffer []byte
 	file, _ := os.OpenFile("info.log", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	defer file.Close()
 	lastDialog, _ := os.OpenFile("lastDialog.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	defer lastDialog.Close()
 	logInfo := log.New(file, "Pi_INFO\t", log.Ldate|log.Ltime)
 	logErr := log.New(file, "Pi_ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
-	var screenshotBuffer []byte
 	options := append(
 		chromedp.DefaultExecAllocatorOptions[:],
 		// chromedp.ProxyServer("45.8.211.64:80"),
@@ -48,45 +49,19 @@ func dialog(login, password, dialogId string) {
 		}),
 		chromedp.Navigate(url),
 		chromedp.Sleep(100*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("PiScreen\\1.png", screenshotBuffer, 02)
-			return err
-		}),
 		chromedp.Click(`#__next > main > div > div > div.relative.flex.h-full.flex-col.items-center > div.flex.w-full.flex-col.items-center.z-20 > button`, chromedp.NodeNotVisible),
 		chromedp.Click(`#__next > main > div > div.flex.grow.flex-col.overflow-y-auto.px-6.pb-5.z-70 > div > div > div > div > div > div.space-y-4 > button.flex.items-center.justify-center.whitespace-nowrap.t-action-m.h-14.w-full.max-w-\[353px\].rounded-full.p-4.border-\[1\.5px\].border-neutral-500.bg-\[\#FFF\].text-primary-600`, chromedp.NodeVisible),
 		chromedp.Sleep(100*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("PiScreen\\2.png", screenshotBuffer, 02)
-			return err
-		}),
 		chromedp.SendKeys("input[type=email]", login, chromedp.NodeVisible),
 		chromedp.Sleep(100*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("PiScreen\\3.png", screenshotBuffer, 02)
-			return err
-		}),
 		chromedp.Click(`#identifierNext > div > button`, chromedp.NodeVisible),
 		chromedp.SendKeys("input[type=password]", password, chromedp.NodeVisible),
 		chromedp.Sleep(100*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("PiScreen\\6.png", screenshotBuffer, 02)
-			return err
-		}),
 		chromedp.Click(`#passwordNext > div > button`, chromedp.NodeVisible),
 		chromedp.Sleep(100*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("PiScreen\\7.png", screenshotBuffer, 02)
-			return err
-		}),
 		chromedp.WaitVisible("textarea"),
 		chromedp.Navigate("https://pi.ai/threads"),
 		chromedp.Sleep(100*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			fmt.Println("Open the required dialog, then send a message to the console")
 			var b string
@@ -98,39 +73,34 @@ func dialog(login, password, dialogId string) {
 		logErr.Panicln("Error while performing the automation logic:", err)
 	}
 
-	// var screenshotBuffer []byte
 	var text0, text1 string
 	ctxTg, cancel := chromedp.NewContext(allocCtxTg)
 	defer cancel()
-	urlTg := "https://web.telegram.org/a"
+	urlTg := "https://web.telegram.org/a/#" + dialogId
 	err = chromedp.Run(ctxTg,
-		chromedp.EmulateViewport(1570, 730),
+		// chromedp.EmulateViewport(1570, 730),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			logInfo.Println("Chrome started")
 			return nil
 		}),
 		chromedp.Navigate(urlTg),
 		chromedp.Sleep(1000*time.Millisecond),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("TgScreen\\StartTelegram.png", screenshotBuffer, 02)
 			logInfo.Printf("Chrome visited %s\n", url)
 			return err
 		}),
-		chromedp.WaitVisible("div[id=peer-story"+dialogId+"]"),
-		chromedp.FullScreenshot(&screenshotBuffer, 100),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			err := os.WriteFile("TgScreen\\UserTelegram.png", screenshotBuffer, 02)
-			logInfo.Println("Chrome etner user account by QR")
-			return err
-		}),
-		chromedp.Click("div[id=peer-story"+dialogId+"]"),
-		chromedp.Sleep(1000*time.Millisecond),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			logInfo.Println("Open Dialog in Telegram")
-			return err
-		}),
-		chromedp.Sleep(20000*time.Millisecond),
+		// chromedp.WaitVisible("div[id=peer-story"+dialogId+"]"),
+		// chromedp.ActionFunc(func(ctx context.Context) error {
+		// 	logInfo.Println("Chrome etner user account by QR")
+		// 	return err
+		// }),
+		// chromedp.Click("div[id=peer-story"+dialogId+"]"),
+		// chromedp.Sleep(1000*time.Millisecond),
+		// chromedp.ActionFunc(func(ctx context.Context) error {
+		// 	logInfo.Println("Open Dialog in Telegram")
+		// 	return err
+		// }),
+		chromedp.Sleep(30000*time.Millisecond),
 	)
 	bufferedChan := make(chan string, 1)
 	// var wg sync.WaitGroup
@@ -181,6 +151,11 @@ func dialog(login, password, dialogId string) {
 									logErr.Panicln("Error while performing the automation logic:", err)
 								}
 								err = chromedp.Run(ctxTg,
+									chromedp.Screenshot(`#editable-message-text`, &buffer),
+									chromedp.ActionFunc(func(ctxTg context.Context) error {
+										os.WriteFile("test.png", buffer, 02)
+										return nil
+									}),
 									chromedp.SendKeys(`#editable-message-text`, answer),
 									chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
 									chromedp.Sleep(500*time.Millisecond),
@@ -262,25 +237,14 @@ func dialog(login, password, dialogId string) {
 }
 
 func main() {
-	os.Remove("TgScreen\\QR.png")
-	os.Remove("TgScreen\\StartTelegram.png")
-	os.Remove("TgScreen\\UserTelegram.png")
-	os.Remove("TgScreen\\DialogTelegram.png")
-	os.Remove("PiScreen\\1.png")
-	os.Remove("PiScreen\\2.png")
-	os.Remove("PiScreen\\3.png")
-	os.Remove("PiScreen\\4.png")
-	os.Remove("PiScreen\\5.png")
-	os.Remove("PiScreen\\6.png")
-	os.Remove("PiScreen\\7.png")
-	os.Remove("PiScreen\\8.png")
-	os.Remove("PiScreen\\test.png")
-
+	os.Remove("test.png")
 	file, _ := os.OpenFile("info.log", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	defer file.Close()
 	logInfo := log.New(file, "APP_INFO\t", log.Ldate|log.Ltime)
 	defer logInfo.Println("app exit")
-	dialogId := "6133569386" //Mis_Kitsune - "1238372228"   Inal - "833591886" Blodos_Dodos_Bot - "5650924958" Арт - "6133569386" Юра - "871044396" Проектик - "-4081628480"
+	var dialogId string
+	fmt.Println(`Change dialog Mis_Kitsune - "1238372228"   Inal - "833591886" Blodos_Dodos_Bot - "5650924958" Арт - "6133569386" Юра - "871044396" Проектик - "-4081628480"`)
+	fmt.Scan(&dialogId)
 
 	dialog("bot408916@gmail.com", "1818ASIUbf23", dialogId)
 	// telegram(dialogId)
