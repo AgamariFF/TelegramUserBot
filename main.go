@@ -11,50 +11,38 @@ import (
 	"time"
 
 	// "github.com/chromedp/cdproto/dom"
+	"telegram/config"
+
 	"github.com/chromedp/chromedp"
 )
 
-func dialog(login, password, dialogId string) {
-	file, _ := os.OpenFile("info.log", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
-	defer file.Close()
-	lastDialog, _ := os.OpenFile("lastDialog.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
-	defer lastDialog.Close()
-	logInfo := log.New(file, "INFO\t", log.Ldate|log.Ltime)
-	logErr := log.New(file, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
+func setupAi(login, password string, logInfo *log.Logger, logErr *log.Logger) (context.Context, context.CancelFunc) {
 	optionsAi := append(
 		chromedp.DefaultExecAllocatorOptions[:],
-		// chromedp.ProxyServer("45.8.211.64:80"),
 		chromedp.Flag("headless", false),
 		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
 		chromedp.Flag("enable-automation", false),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.Flag("disable-infobars", true),
+		chromedp.Flag("disable-extensions", true),
 		// chromedp.Flag("disable-web-security", false),
-		chromedp.Flag("disable-web-security", false),
-		chromedp.Flag("allow-running-insecure-content", true),
+		// chromedp.Flag("allow-running-insecure-content", true),
 	)
-	optionsTg := append(
-		chromedp.DefaultExecAllocatorOptions[:],
-		// chromedp.ProxyServer("45.8.211.64:80"),
-		chromedp.Flag("headless", true),
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
-		chromedp.Flag("enable-automation", false),
-		// chromedp.Flag("disable-web-security", false),
-		chromedp.Flag("disable-web-security", true),
-		chromedp.Flag("allow-running-insecure-content", true),
-	)
-	allocCtxAi, cancel := chromedp.NewExecAllocator(context.Background(), optionsAi...)
-	defer cancel()
 
-	allocCtxTg, cancel := chromedp.NewExecAllocator(context.Background(), optionsTg...)
-	defer cancel()
-	ctx, cancel := chromedp.NewContext(allocCtxAi)
-	defer cancel()
-	var flag bool
-	var screenBuffer []byte
+	ctx, cancel := chromedp.NewContext( func() context.Context {
+        ctx, _ := chromedp.NewExecAllocator(context.Background(), optionsAi...)
+        return ctx
+    }(),
+		chromedp.WithLogf(func(string, ...interface{}) {}),
+		chromedp.WithDebugf(func(string, ...interface{}) {}),
+		chromedp.WithErrorf(func(string, ...interface{}) {}),
+	)
+
 	url := "https://pi.ai/"
 	err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(1570, 730),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			logInfo.Println("Chrom to Pi started")
+			logInfo.Println("Chrome to Pi started")
 			fmt.Println("Chrome to Pi started")
 			return nil
 		}),
@@ -83,12 +71,35 @@ func dialog(login, password, dialogId string) {
 	if err != nil {
 		logErr.Panicln("Error while performing the automation logic:", err)
 	}
+	
+	return ctx, cancel
 
-	var text0, text1 string
-	ctxTg, cancel := chromedp.NewContext(allocCtxTg)
-	defer cancel()
+}
+
+func setupTg (dialogId string, logInfo *log.Logger, logErr *log.Logger) (context.Context, context.CancelFunc) {
+	optionsTg := append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		// chromedp.ProxyServer("45.8.211.64:80"),
+		chromedp.Flag("headless", true),
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
+		chromedp.Flag("enable-automation", false),
+		// chromedp.Flag("disable-web-security", true),
+		// chromedp.Flag("allow-running-insecure-content", true),
+	)
+
+	var screenBuffer []byte
+
+	ctx, cancel := chromedp.NewContext( func() context.Context {
+        ctx, _ := chromedp.NewExecAllocator(context.Background(), optionsTg...)
+        return ctx
+    }(),
+		chromedp.WithLogf(func(string, ...interface{}) {}),
+		chromedp.WithDebugf(func(string, ...interface{}) {}),
+		chromedp.WithErrorf(func(string, ...interface{}) {}),
+	)
+
 	urlTg := "https://web.telegram.org/a/#" + dialogId
-	err = chromedp.Run(ctxTg,
+	err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(1920, 1080),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			logInfo.Println("Chrome to TG started")
@@ -98,21 +109,50 @@ func dialog(login, password, dialogId string) {
 		chromedp.Sleep(10000*time.Millisecond),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			logInfo.Printf("Chrome visited %s\n", urlTg)
-			return err
+			return nil
 		}),
 		chromedp.Sleep(7000*time.Millisecond),
 		chromedp.Screenshot("#auth-qr-form > div > div", &screenBuffer, chromedp.NodeVisible),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			fmt.Println("Scan QR in QR.png")
-			os.WriteFile("QR.png", screenBuffer, 02)
+			os.WriteFile("QR.png", screenBuffer, 0644)
 			logInfo.Println("Made the ScreenShot with QR")
-			return err
+			return nil
 		}),
 		chromedp.WaitVisible("#editable-message-text"),
 	)
+	if err != nil {
+		logErr.Panicln("Error while performing the automation logic:", err)
+	}
 	fmt.Println("Wait")
 	os.Remove("QR.png")
 	time.Sleep(12000 * time.Millisecond)
+
+	return ctx, cancel
+}
+
+func commandHandler(ch chan string, logInfo *log.Logger, logErr *log.Logger) {
+    var command string
+	fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
+	logInfo.Println("Ready to process messages or command")
+    for {
+        fmt.Scan(&command)
+        ch <- command
+    }
+}
+
+func dialog(login, password, dialogId string, logInfo *log.Logger, logErr *log.Logger) {
+	lastDialog, _ := os.OpenFile("lastDialog.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	defer lastDialog.Close()
+	var flag bool
+
+	var text0, text1 string
+	
+	ctxAi, cancelAi := setupAi(login, password, logInfo, logErr)
+	defer cancelAi()
+	ctxTg, cancelTg := setupTg(dialogId, logInfo, logErr)
+	defer canceTg()
+	
 	bufferedChan := make(chan string, 1)
 	// var wg sync.WaitGroup
 	// wg.Add(2)
@@ -130,12 +170,6 @@ func dialog(login, password, dialogId string) {
 	func() {
 		for {
 			chromedp.Run(ctxTg,
-				chromedp.ActionFunc(func(ctxTg context.Context) error {
-					fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
-					logInfo.Println("Ready to process messages or command")
-					return err
-				}),
-
 				chromedp.Text(`div[class="messages-container"]`, &text0),
 				chromedp.ActionFunc(func(ctxTg context.Context) error {
 					var answer string
@@ -327,15 +361,18 @@ func dialog(login, password, dialogId string) {
 }
 
 func main() {
+	cfg := config.LoadConfig()
 	os.Remove("QR.png")
 	file, _ := os.OpenFile("info.log", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	defer file.Close()
+	os.Stderr = file
 	logInfo := log.New(file, "APP_INFO\t", log.Ldate|log.Ltime)
+	logErr := log.New(file, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 	defer logInfo.Println("app exit")
 	var dialogId string
 	fmt.Println("Change dialog Mis_Kitsune - \"1238372228\"   Inal - \"833591886\" Blodos_Dodos_Bot - \"5650924958\" Арт - \"6133569386\" Юра - \"871044396\"\nПроектик - \"-4081628480\" Ермолов - \"1498293686\" Саша ДВ(^^) -\"1891226386\" Настя ДВ(milk_catt) - 1180819964")
 	fmt.Scan(&dialogId)
 
-	dialog("bot408916@gmail.com", "1818ASIUbf23", dialogId)
+	dialog(cfg.Gmail, cfg.Password, dialogId, logInfo, logErr)
 	// telegram(dialogId)
 }
