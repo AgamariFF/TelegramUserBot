@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"os"
 
-	"io"
 	"time"
 
 	// "github.com/chromedp/cdproto/dom"
@@ -15,6 +13,12 @@ import (
 
 	"github.com/chromedp/chromedp"
 )
+
+// Структура для хранения сообщений
+type Message struct {
+	Text string `json:"text"`
+	Time string `json:"time"`
+}
 
 func setupAi(login, password string, logInfo *log.Logger, logErr *log.Logger) (context.Context, context.CancelFunc) {
 	optionsAi := append(
@@ -29,10 +33,10 @@ func setupAi(login, password string, logInfo *log.Logger, logErr *log.Logger) (c
 		// chromedp.Flag("allow-running-insecure-content", true),
 	)
 
-	ctx, cancel := chromedp.NewContext( func() context.Context {
-        ctx, _ := chromedp.NewExecAllocator(context.Background(), optionsAi...)
-        return ctx
-    }(),
+	ctx, cancel := chromedp.NewContext(func() context.Context {
+		ctx, _ := chromedp.NewExecAllocator(context.Background(), optionsAi...)
+		return ctx
+	}(),
 		chromedp.WithLogf(func(string, ...interface{}) {}),
 		chromedp.WithDebugf(func(string, ...interface{}) {}),
 		chromedp.WithErrorf(func(string, ...interface{}) {}),
@@ -71,16 +75,16 @@ func setupAi(login, password string, logInfo *log.Logger, logErr *log.Logger) (c
 	if err != nil {
 		logErr.Panicln("Error while performing the automation logic:", err)
 	}
-	
+
 	return ctx, cancel
 
 }
 
-func setupTg (dialogId string, logInfo *log.Logger, logErr *log.Logger) (context.Context, context.CancelFunc) {
+func setupTg(dialogId string, logInfo *log.Logger, logErr *log.Logger) (context.Context, context.CancelFunc) {
 	optionsTg := append(
 		chromedp.DefaultExecAllocatorOptions[:],
 		// chromedp.ProxyServer("45.8.211.64:80"),
-		chromedp.Flag("headless", true),
+		chromedp.Flag("headless", false),
 		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
 		chromedp.Flag("enable-automation", false),
 		// chromedp.Flag("disable-web-security", true),
@@ -89,10 +93,10 @@ func setupTg (dialogId string, logInfo *log.Logger, logErr *log.Logger) (context
 
 	var screenBuffer []byte
 
-	ctx, cancel := chromedp.NewContext( func() context.Context {
-        ctx, _ := chromedp.NewExecAllocator(context.Background(), optionsTg...)
-        return ctx
-    }(),
+	ctx, cancel := chromedp.NewContext(func() context.Context {
+		ctx, _ := chromedp.NewExecAllocator(context.Background(), optionsTg...)
+		return ctx
+	}(),
 		chromedp.WithLogf(func(string, ...interface{}) {}),
 		chromedp.WithDebugf(func(string, ...interface{}) {}),
 		chromedp.WithErrorf(func(string, ...interface{}) {}),
@@ -132,232 +136,290 @@ func setupTg (dialogId string, logInfo *log.Logger, logErr *log.Logger) (context
 }
 
 func commandHandler(ch chan string, logInfo *log.Logger, logErr *log.Logger) {
-    var command string
+	var command string
 	fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
 	logInfo.Println("Ready to process messages or command")
-    for {
-        fmt.Scan(&command)
-        ch <- command
-    }
+	for {
+		fmt.Scan(&command)
+		ch <- command
+	}
+}
+
+func MonitorPartnerMessages(ctx context.Context, msgChan chan<- string, logInfo *log.Logger) error {
+	var messages []string
+	lastMessageHash := ""
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			// Получаем все сообщения собеседника
+			err := chromedp.Run(ctx,
+				chromedp.Evaluate(`
+                    Array.from(
+                        document.querySelectorAll('.message:not(.is-out) .text')
+                    ).map(msg => {
+                        return {
+                            text: msg.innerText,
+                            time: msg.closest('.message').querySelector('.time').innerText
+                        }
+                    })
+                `, &messages),
+			)
+			if err != nil {
+				return fmt.Errorf("ошибка получения сообщений: %w", err)
+			}
+
+			// Фильтруем новые сообщения
+			if len(messages) > 0 {
+				currentHash := fmt.Sprintf("%s|%s", messages[len(messages)-1].Text, messages[len(messages)-1].Time)
+
+				if currentHash != lastMessageHash {
+					lastMessageHash = currentHash
+					msgChan <- messages[len(messages)-1].Text
+					logInfo.Println("New message detected:", messages[len(messages)-1].Text)
+				}
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+	}
 }
 
 func dialog(login, password, dialogId string, logInfo *log.Logger, logErr *log.Logger) {
 	lastDialog, _ := os.OpenFile("lastDialog.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	defer lastDialog.Close()
-	var flag bool
+	// var flag bool
 
-	var text0, text1 string
-	
-	ctxAi, cancelAi := setupAi(login, password, logInfo, logErr)
-	defer cancelAi()
+	// var text0, text1 string
+
+	// ctxAi, cancelAi := setupAi(login, password, logInfo, logErr)
+	// defer cancelAi()
 	ctxTg, cancelTg := setupTg(dialogId, logInfo, logErr)
-	defer canceTg()
-	
-	bufferedChan := make(chan string, 1)
+	defer cancelTg()
+
+	var newMessages []string
+	for {
+		err := chromedp.Run(ctxTg,
+			chromedp.Evaluate(`
+                    Array.from(
+                        document.querySelectorAll('.message:not(.my-message) .text')
+                    ).map(el => el.innerText)
+                `, &newMessages),
+		)
+		if err != nil {
+			fmt.Println("ошибка получения сообщений: %v", err)
+		}
+		fmt.Println("Новое аообщение:", newMessages)
+		time.Sleep(time.Second)
+	}
+
+	// bufferedChan := make(chan string, 1)
 	// var wg sync.WaitGroup
 	// wg.Add(2)
-	go func() {
-		var command string
-		for {
-			if command == "a" && flag == false {
-				time.Sleep(400 * time.Millisecond)
-				continue
-			}
-			fmt.Scan(&command)
-			bufferedChan <- command
-		}
-	}()
-	func() {
-		for {
-			chromedp.Run(ctxTg,
-				chromedp.Text(`div[class="messages-container"]`, &text0),
-				chromedp.ActionFunc(func(ctxTg context.Context) error {
-					var answer string
-					if len(text0) > 1000 {
-						text0 = text0[len(text0)-999:]
-					}
-					lastDialog.WriteString(text0)
-					text1 = text0
-					for text0 == text1 {
-						select {
-						case msg := <-bufferedChan:
-							{
-								logInfo.Println("The command has been received", msg)
-								switch msg {
-								case "q":
-									logInfo.Panicln("App exit by User")
-								case "s":
-									{
-										logInfo.Println("The command to start the dialogue has been received", msg)
-										fmt.Println("The command to start the dialogue has been received")
-										err = chromedp.Run(ctx,
-											chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, "Представь, что этого сообщения нет, не отвечай на него, просто начни диалог"),
-											chromedp.MouseClickXY(1360, 630),
-											chromedp.Sleep(10000*time.Millisecond),
-											chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
-											chromedp.ActionFunc(func(ctx context.Context) error {
-												fmt.Println(`the response has been received and contains "` + answer + `"`)
-												logInfo.Println(`the response has been received and contains "` + answer + `"`)
-												return err
-											}),
-										)
-										if err != nil {
-											logErr.Panicln("Error while performing the automation logic:", err)
-										}
-										err = chromedp.Run(ctxTg,
-											chromedp.SendKeys(`#editable-message-text`, answer),
-											chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
-											chromedp.Sleep(500*time.Millisecond),
-										)
-										logInfo.Println("The response has been sent(start dialog)")
-										flag = true
-										fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
-										logInfo.Println("Ready to process messages or command")
-									}
-								case "c":
-									{
-										logInfo.Println("The command to continue the dialogue has been received", msg)
-										fmt.Println("The command to continue the dialogue has been received")
-										err = chromedp.Run(ctx,
-											chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, "Представь, что этого сообщения нет, не отвечай на него, просто продолжи диалог на любую тему"),
-											chromedp.MouseClickXY(1360, 630),
-											chromedp.Sleep(10000*time.Millisecond),
-											chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
-											chromedp.ActionFunc(func(ctx context.Context) error {
-												fmt.Println(`the response has been received and contains "` + answer + `"`)
-												logInfo.Println(`the response has been received and contains "` + answer + `"`)
-												return err
-											}),
-										)
-										if err != nil {
-											logErr.Panicln("Error while performing the automation logic:", err)
-										}
-										err = chromedp.Run(ctxTg,
-											chromedp.SendKeys(`#editable-message-text`, answer),
-											chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
-											chromedp.Sleep(500*time.Millisecond),
-										)
-										logInfo.Println("The response has been sent(start dialog)")
-										flag = true
-										fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
-										logInfo.Println("Ready to process messages or command")
-									}
-								case "a":
-									{
-										logInfo.Println("The command to custom request has been received", msg)
-										fmt.Println(`Enter your request`)
-										in := bufio.NewReader(os.Stdin)
-										_, _ = in.ReadString('\n')
-										request, _ := in.ReadString('\n')
-										logInfo.Println(`Custom request contained "` + request + `"`)
-										err = chromedp.Run(ctx,
-											chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, request),
-											chromedp.MouseClickXY(1360, 630),
-											chromedp.Sleep(10000*time.Millisecond),
-											chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
-											chromedp.ActionFunc(func(ctx context.Context) error {
-												fmt.Println(`the response has been received and contains "` + answer + `"`)
-												logInfo.Println(`the response has been received and contains "` + answer + `"`)
-												return err
-											}),
-										)
-										if err != nil {
-											logErr.Panicln("Error while performing the automation logic:", err)
-										}
-										err = chromedp.Run(ctxTg,
-											chromedp.SendKeys(`#editable-message-text`, answer),
-											chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
-											chromedp.Sleep(500*time.Millisecond),
-										)
-										logInfo.Println("The response has been sent(start dialog)")
-										flag = true
-										fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
-										logInfo.Println("Ready to process messages or command")
-									}
-								}
-							}
-						default:
-							{
-								err := chromedp.Run(ctxTg,
-									chromedp.Sleep(10000*time.Millisecond),
-									chromedp.Text(`div[class="messages-container"]`, &text0),
-									chromedp.ActionFunc(func(ctxTg context.Context) error {
-										if len(text0) > 1000 {
-											text0 = text0[len(text0)-999:]
-										}
-										if flag {
-											text1 = text0
-											flag = false
-										}
-										return nil
-									}),
-								)
-								if err != nil {
-									logErr.Panicln("Error while performing the automation logic:", err)
-								}
-								if text0 == text1 {
-									lastDialog.Seek(0, io.SeekStart)
-									lastDialog.Truncate(0)
-									lastDialog.WriteString(text0)
-									text1 = text0
-								} else {
-									lastDialog.Seek(0, io.SeekStart)
-									lastDialog.Truncate(0)
-									lastDialog.WriteString(text0)
-									fmt.Println("A new message has been received from telegram")
-									logInfo.Println("A new message has been received from telegram")
-									break
-								}
-							}
-						}
-					}
-					return nil
-				}),
-			)
-			if err != nil {
-				logErr.Panicln("Error while performing the automation logic:", err)
-			}
-			str := string(text0[:len(text0)-5])
-			for i := len(str); true; i-- {
-				if string(str[i-1]) >= "0" && string(str[i-1]) <= "9" && string(str[i-2]) >= "0" && string(str[i-2]) <= "9" && string(str[i-3]) == ":" && string(str[i-4]) >= "0" && string(str[i-4]) <= "9" && string(str[i-5]) >= "0" && string(str[i-5]) <= "9" {
-					str = str[i:]
-					logInfo.Println(`New message contain "` + str + `"`)
-					if len(str) == 0 {
-						continue
-					}
-					break
-				} else if str[i-20:i-2] == "Владислав" {
-					str = str[i-2:]
-					logInfo.Println(`New message contain "` + str + `"`)
-					if len(str) == 0 {
-						continue
-					}
-					break
-				}
-			}
-			var answer string
-			err = chromedp.Run(ctx,
-				chromedp.SendKeys(`textarea[role="textbox"]`, str),
-				// chromedp.MouseClickXY(1360, 630),
-				chromedp.Sleep(7000*time.Millisecond),
-				chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					fmt.Println(`the response has been received and contains "` + answer + `"`)
-					logInfo.Println(`the response has been received and contains "` + answer + `"`)
-					return err
-				}),
-			)
-			if err != nil {
-				logErr.Panicln("Error while performing the automation logic:", err)
-			}
-			err = chromedp.Run(ctxTg,
-				chromedp.SendKeys(`#editable-message-text`, answer),
-				chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
-				chromedp.Sleep(500*time.Millisecond),
-			)
-			logInfo.Println("The response has been sent")
-		}
-	}()
+	// go func() {
+	// 	var command string
+	// 	for {
+	// 		if command == "a" && flag == false {
+	// 			time.Sleep(400 * time.Millisecond)
+	// 			continue
+	// 		}
+	// 		fmt.Scan(&command)
+	// 		bufferedChan <- command
+	// 	}
+	// }()
+	// func() {
+	// 	for {
+	// 		chromedp.Run(ctxTg,
+	// 			chromedp.Text(`div[class="messages-container"]`, &text0),
+	// 			chromedp.ActionFunc(func(ctxTg context.Context) error {
+	// 				var answer string
+	// 				if len(text0) > 1000 {
+	// 					text0 = text0[len(text0)-999:]
+	// 				}
+	// 				lastDialog.WriteString(text0)
+	// 				text1 = text0
+	// 				for text0 == text1 {
+	// 					select {
+	// 					case msg := <-bufferedChan:
+	// 						{
+	// 							logInfo.Println("The command has been received", msg)
+	// 							switch msg {
+	// 							case "q":
+	// 								logInfo.Panicln("App exit by User")
+	// 							case "s":
+	// 								{
+	// 									logInfo.Println("The command to start the dialogue has been received", msg)
+	// 									fmt.Println("The command to start the dialogue has been received")
+	// 									err = chromedp.Run(ctx,
+	// 										chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, "Представь, что этого сообщения нет, не отвечай на него, просто начни диалог"),
+	// 										chromedp.MouseClickXY(1360, 630),
+	// 										chromedp.Sleep(10000*time.Millisecond),
+	// 										chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
+	// 										chromedp.ActionFunc(func(ctx context.Context) error {
+	// 											fmt.Println(`the response has been received and contains "` + answer + `"`)
+	// 											logInfo.Println(`the response has been received and contains "` + answer + `"`)
+	// 											return err
+	// 										}),
+	// 									)
+	// 									if err != nil {
+	// 										logErr.Panicln("Error while performing the automation logic:", err)
+	// 									}
+	// 									err = chromedp.Run(ctxTg,
+	// 										chromedp.SendKeys(`#editable-message-text`, answer),
+	// 										chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
+	// 										chromedp.Sleep(500*time.Millisecond),
+	// 									)
+	// 									logInfo.Println("The response has been sent(start dialog)")
+	// 									flag = true
+	// 									fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
+	// 									logInfo.Println("Ready to process messages or command")
+	// 								}
+	// 							case "c":
+	// 								{
+	// 									logInfo.Println("The command to continue the dialogue has been received", msg)
+	// 									fmt.Println("The command to continue the dialogue has been received")
+	// 									err = chromedp.Run(ctx,
+	// 										chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, "Представь, что этого сообщения нет, не отвечай на него, просто продолжи диалог на любую тему"),
+	// 										chromedp.MouseClickXY(1360, 630),
+	// 										chromedp.Sleep(10000*time.Millisecond),
+	// 										chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
+	// 										chromedp.ActionFunc(func(ctx context.Context) error {
+	// 											fmt.Println(`the response has been received and contains "` + answer + `"`)
+	// 											logInfo.Println(`the response has been received and contains "` + answer + `"`)
+	// 											return err
+	// 										}),
+	// 									)
+	// 									if err != nil {
+	// 										logErr.Panicln("Error while performing the automation logic:", err)
+	// 									}
+	// 									err = chromedp.Run(ctxTg,
+	// 										chromedp.SendKeys(`#editable-message-text`, answer),
+	// 										chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
+	// 										chromedp.Sleep(500*time.Millisecond),
+	// 									)
+	// 									logInfo.Println("The response has been sent(start dialog)")
+	// 									flag = true
+	// 									fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
+	// 									logInfo.Println("Ready to process messages or command")
+	// 								}
+	// 							case "a":
+	// 								{
+	// 									logInfo.Println("The command to custom request has been received", msg)
+	// 									fmt.Println(`Enter your request`)
+	// 									in := bufio.NewReader(os.Stdin)
+	// 									_, _ = in.ReadString('\n')
+	// 									request, _ := in.ReadString('\n')
+	// 									logInfo.Println(`Custom request contained "` + request + `"`)
+	// 									err = chromedp.Run(ctx,
+	// 										chromedp.SendKeys(`#__next > main > div > div > div.relative.grow.overflow-x-auto.hidden.lg\:flex.lg\:flex-col > div.relative.flex.flex-col.overflow-hidden.sm\:overflow-x-visible.h-full.pt-8.grow > div.max-h-\[40\%\].px-5.sm\:px-0.z-15.w-full.mx-auto.max-w-1\.5xl.\32 xl\:max-w-\[47rem\] > div > div > textarea`, request),
+	// 										chromedp.MouseClickXY(1360, 630),
+	// 										chromedp.Sleep(10000*time.Millisecond),
+	// 										chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
+	// 										chromedp.ActionFunc(func(ctx context.Context) error {
+	// 											fmt.Println(`the response has been received and contains "` + answer + `"`)
+	// 											logInfo.Println(`the response has been received and contains "` + answer + `"`)
+	// 											return err
+	// 										}),
+	// 									)
+	// 									if err != nil {
+	// 										logErr.Panicln("Error while performing the automation logic:", err)
+	// 									}
+	// 									err = chromedp.Run(ctxTg,
+	// 										chromedp.SendKeys(`#editable-message-text`, answer),
+	// 										chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
+	// 										chromedp.Sleep(500*time.Millisecond),
+	// 									)
+	// 									logInfo.Println("The response has been sent(start dialog)")
+	// 									flag = true
+	// 									fmt.Println("Ready to process messages or your command(q - quit, s - start dialog request, c - continue dialog reauest, a - custom dialog request)")
+	// 									logInfo.Println("Ready to process messages or command")
+	// 								}
+	// 							}
+	// 						}
+	// 					default:
+	// 						{
+	// 							err := chromedp.Run(ctxTg,
+	// 								chromedp.Sleep(10000*time.Millisecond),
+	// 								chromedp.Text(`div[class="messages-container"]`, &text0),
+	// 								chromedp.ActionFunc(func(ctxTg context.Context) error {
+	// 									if len(text0) > 1000 {
+	// 										text0 = text0[len(text0)-999:]
+	// 									}
+	// 									if flag {
+	// 										text1 = text0
+	// 										flag = false
+	// 									}
+	// 									return nil
+	// 								}),
+	// 							)
+	// 							if err != nil {
+	// 								logErr.Panicln("Error while performing the automation logic:", err)
+	// 							}
+	// 							if text0 == text1 {
+	// 								lastDialog.Seek(0, io.SeekStart)
+	// 								lastDialog.Truncate(0)
+	// 								lastDialog.WriteString(text0)
+	// 								text1 = text0
+	// 							} else {
+	// 								lastDialog.Seek(0, io.SeekStart)
+	// 								lastDialog.Truncate(0)
+	// 								lastDialog.WriteString(text0)
+	// 								fmt.Println("A new message has been received from telegram")
+	// 								logInfo.Println("A new message has been received from telegram")
+	// 								break
+	// 							}
+	// 						}
+	// 					}
+	// 				}
+	// 				return nil
+	// 			}),
+	// 		)
+	// 		if err != nil {
+	// 			logErr.Panicln("Error while performing the automation logic:", err)
+	// 		}
+	// 		str := string(text0[:len(text0)-5])
+	// 		for i := len(str); true; i-- {
+	// 			if string(str[i-1]) >= "0" && string(str[i-1]) <= "9" && string(str[i-2]) >= "0" && string(str[i-2]) <= "9" && string(str[i-3]) == ":" && string(str[i-4]) >= "0" && string(str[i-4]) <= "9" && string(str[i-5]) >= "0" && string(str[i-5]) <= "9" {
+	// 				str = str[i:]
+	// 				logInfo.Println(`New message contain "` + str + `"`)
+	// 				if len(str) == 0 {
+	// 					continue
+	// 				}
+	// 				break
+	// 			} else if str[i-20:i-2] == "Владислав" {
+	// 				str = str[i-2:]
+	// 				logInfo.Println(`New message contain "` + str + `"`)
+	// 				if len(str) == 0 {
+	// 					continue
+	// 				}
+	// 				break
+	// 			}
+	// 		}
+	// 		var answer string
+	// 		err = chromedp.Run(ctx,
+	// 			chromedp.SendKeys(`textarea[role="textbox"]`, str),
+	// 			// chromedp.MouseClickXY(1360, 630),
+	// 			chromedp.Sleep(7000*time.Millisecond),
+	// 			chromedp.Text(`body > #__next > main > div > div > .relative > .relative > .grow > div > div > div > .pb-6 > div > div > .break-anywhere > .flex > div > div`, &answer),
+	// 			chromedp.ActionFunc(func(ctx context.Context) error {
+	// 				fmt.Println(`the response has been received and contains "` + answer + `"`)
+	// 				logInfo.Println(`the response has been received and contains "` + answer + `"`)
+	// 				return err
+	// 			}),
+	// 		)
+	// 		if err != nil {
+	// 			logErr.Panicln("Error while performing the automation logic:", err)
+	// 		}
+	// 		err = chromedp.Run(ctxTg,
+	// 			chromedp.SendKeys(`#editable-message-text`, answer),
+	// 			chromedp.Click(`#MiddleColumn > div.messages-layout > div.Transition > div > div.middle-column-footer > div.Composer.shown.mounted > button`),
+	// 			chromedp.Sleep(500*time.Millisecond),
+	// 		)
+	// 		logInfo.Println("The response has been sent")
+	// 	}
+	// }()
 }
 
 func main() {
