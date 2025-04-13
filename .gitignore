@@ -1,3 +1,5 @@
 info.log
 lastDialog.txt
 .env
+chrome_profile_ai_*
+chrome_profile_tg_*
