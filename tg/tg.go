@@ -42,7 +42,7 @@ func SetupTg(logInfo *log.Logger, logErr *log.Logger, consoleMutex *sync.Mutex, 
 		chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("user-data-dir", profilePath),
 		// chromedp.ProxyServer("45.8.211.64:80"),
-		chromedp.Flag("headless", false),
+		chromedp.Flag("headless", true),
 		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
 		chromedp.Flag("enable-automation", false),
 		// chromedp.Flag("disable-web-security", true),
@@ -117,8 +117,11 @@ func SetupTg(logInfo *log.Logger, logErr *log.Logger, consoleMutex *sync.Mutex, 
 
 func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, logErr *log.Logger, lastDialog *os.File, incoming chan Message, outcoming chan Message, timeSleep time.Duration) {
 	logInfo.Println("MonitorPartnerMessages запущен")
-	lastMsg := Message{"", 0}
+	var outcomingMsg Message
 	var maxN *int
+	var n int
+	lastMsg := Message{"", 0}
+	time.Sleep(time.Second)
 	err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(1500, 800),
 		chromedp.Evaluate(`
@@ -137,6 +140,7 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
             })()
         `, &maxN),
 	)
+	logInfo.Println("Максимальноу Id сообщения: ", *maxN)
 
 	if err != nil {
 		logErr.Fatalln("Ошибка поиска максимального n:", err)
@@ -146,9 +150,7 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
 		logErr.Fatalln("Элементы не найдены или некорректные ID")
 	}
 
-	var outcomingMsg Message
-
-	for n := *maxN; n >= lastMsg.Id; n-- {
+	for n = *maxN; n >= lastMsg.Id; n-- {
 		var outMsg bool
 		var exists bool
 		var classAttr string
@@ -156,12 +158,26 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
 
 		// Проверка существования элемента
 		err := chromedp.Run(ctx,
-			chromedp.AttributeValue(xpath, "class", &classAttr, &exists),
+			chromedp.Evaluate(
+				fmt.Sprintf(`
+                !!document.evaluate('%s', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+            `, xpath),
+				&exists,
+			),
 		)
-
 		if err != nil || !exists {
 			continue
+		} else {
+			err = chromedp.Run(ctx,
+				chromedp.AttributeValue(xpath, "class", &classAttr, &exists),
+			)
+			if err != nil {
+				logErr.Println(err)
+				continue
+			}
 		}
+
+		logInfo.Println("Проверяю сообщение с id=", n, "\tАттрибуты: ", classAttr)
 
 		substrings := []string{"with-outgoing-icon", "own"}
 		for _, substing := range substrings {
@@ -170,12 +186,15 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
 			}
 		}
 		if outMsg {
+			logInfo.Println("Это исходящее сообщение")
 			outMsg = false
 			continue
 		}
 		lastMsg.Id = n
 		logInfo.Println("Последнее входящее сообщение в этом чате имеет id = ", n)
+		break
 	}
+	fmt.Println("Начал считывать сообщения в Tg")
 
 	var skipMsg bool
 
@@ -183,8 +202,9 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
 		select {
 		case outcomingMsg = <-outcoming:
 			logInfo.Println("Считано сообщение из outcoming: ", outcomingMsg)
-			err = chromedp.Run(ctx,
+			err := chromedp.Run(ctx,
 				chromedp.SendKeys(`//*[@id="editable-message-text"]`, outcomingMsg.Text, chromedp.NodeVisible),
+				chromedp.Sleep(500*time.Millisecond),
 				chromedp.Click(`//*[@id="MiddleColumn"]/div[4]/div[3]/div/div[2]/div[1]/button`, chromedp.NodeVisible),
 			)
 			if err != nil {
@@ -226,12 +246,25 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
 				var classAttr string
 				xpath := fmt.Sprintf(`//*[@id="message-%d"]/div[3]/div/div[1]/div`, n)
 
-				// Проверка существования элемента
-				err := chromedp.Run(ctx,
-					chromedp.AttributeValue(xpath, "class", &classAttr, &exists),
+				err = chromedp.Run(ctx,
+					chromedp.Evaluate(
+						fmt.Sprintf(`
+                !!document.evaluate('%s', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+            `, xpath),
+						&exists,
+					),
 				)
 
 				if err != nil || !exists {
+					continue
+				}
+
+				err = chromedp.Run(ctx,
+					chromedp.AttributeValue(xpath, "class", &classAttr, &exists),
+				)
+
+				if err != nil {
+					logErr.Println(err)
 					continue
 				}
 

@@ -40,6 +40,7 @@ func setupAi(login, password string, logInfo *log.Logger, logErr *log.Logger, ct
 
 func AiHeandler(login, pasword string, logInfo *log.Logger, logErr *log.Logger, lastDialog os.File, consoleMutex *sync.Mutex, incoming chan tg.Message, outcoming chan tg.Message, wg *sync.WaitGroup) {
 	var profilePath string
+	var reloadThreads bool
 	for i := 0; i < 100; i++ {
 		profilePath = ProfilePathAi + strconv.Itoa(i) + "/"
 		if !internal.IsBrowserRunning(profilePath) {
@@ -86,7 +87,7 @@ func AiHeandler(login, pasword string, logInfo *log.Logger, logErr *log.Logger, 
 			return nil
 		}),
 		chromedp.Navigate(url),
-		chromedp.Sleep(time.Second),
+		chromedp.Sleep(2*time.Second),
 		chromedp.Evaluate(`
             (function() {
                 const xpath = '//*[@id="__next"]/main/div/div/div[2]/div[3]/div/div/button[2]';
@@ -136,9 +137,10 @@ func AiHeandler(login, pasword string, logInfo *log.Logger, logErr *log.Logger, 
 		logErr.Println(err)
 	}
 	consoleMutex.Lock()
+	var b int
+
 	for {
 		fmt.Printf("Скриншот чатов сохранен в Chats.png\nДоступно %d чатов. Выбирите номер чата по счету или 0 если делаете это вручную\n", count)
-		var b int
 		fmt.Scan(&b)
 		os.Remove("Chats.png")
 		if b == 0 {
@@ -173,7 +175,21 @@ func AiHeandler(login, pasword string, logInfo *log.Logger, logErr *log.Logger, 
 		err = chromedp.Run(ctx,
 			chromedp.SendKeys(`//*[@id="__next"]/main/div/div/div[3]/div[1]/div[4]/div/div/textarea`, incomingMsg.Text, chromedp.NodeVisible),
 			chromedp.Click(`//*[@id="__next"]/main/div/div/div[3]/div[1]/div[4]/div/button`, chromedp.NodeVisible),
-			chromedp.Sleep(10*time.Second),
+		)
+		if b != 1 && !reloadThreads {
+			reloadThreads = true
+			err = chromedp.Run(ctx,
+				chromedp.Sleep(3*time.Second),
+				chromedp.Navigate(url),
+				chromedp.Sleep(3*time.Second),
+				chromedp.Click(`/html/body/div/main/div/div/div[2]/div[3]/div/div/button[2]`, chromedp.NodeVisible),
+				chromedp.Sleep(4*time.Second),
+			)
+		} else {
+			time.Sleep(10 * time.Second)
+		}
+
+		err = chromedp.Run(ctx,
 			chromedp.Text(`//*[@id="__next"]/main/div/div/div[3]/div[1]/div[2]/div/div/div/div[3]/div/div/div[2]/div[1]`, &outcomingMsg.Text, chromedp.NodeVisible),
 		)
 		logInfo.Println("Овет от Ai: ", outcomingMsg.Text)
