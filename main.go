@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,9 @@ func commandHandler(logInfo *log.Logger, logErr *log.Logger, ch chan tg.Message)
 			fmt.Println("Введите запрос для сообщения")
 			in := bufio.NewReader(os.Stdin)
 			customMsg, _ = in.ReadString('\n')
+			if strings.HasSuffix(customMsg, "\n") {
+				customMsg = customMsg[:len(customMsg)-1]
+			}
 			logInfo.Println(`Custom request contained "` + customMsg + `"`)
 			ch <- tg.Message{customMsg, -1}
 		}

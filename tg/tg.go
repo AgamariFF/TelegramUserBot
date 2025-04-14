@@ -149,7 +149,7 @@ func MonitorPartnerMessagesAndSend(ctx context.Context, logInfo *log.Logger, log
 	if maxN == nil {
 		logErr.Fatalln("Элементы не найдены или некорректные ID")
 	}
-
+	// if (lastMsg.Id - 10000) >
 	for n = *maxN; n >= lastMsg.Id; n-- {
 		var outMsg bool
 		var exists bool
